@@ -15,6 +15,11 @@ async function main() {
   console.log("SimpleVoting deployed to:", address);
   console.log("Owner:", await voting.owner());
   
+  // Export address so other scripts can use it
+  if (typeof process !== 'undefined') {
+    process.env.DEPLOYED_CONTRACT_ADDRESS = address;
+  }
+  
   return address;
 }
 
@@ -22,7 +27,10 @@ async function main() {
 main()
   .then((address) => {
     console.log("Deployment successful!");
-    process.exit(0);
+    // Don't exit immediately - let calling script handle it
+    if (require.main === module) {
+      process.exit(0);
+    }
   })
   .catch((error) => {
     console.error("Deployment failed:", error);

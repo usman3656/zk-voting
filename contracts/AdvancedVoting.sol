@@ -2,14 +2,14 @@
 pragma solidity ^0.8.28;
 
 /**
- * @title SimpleVoting
+ * @title AdvancedVoting
  * @dev An advanced voting system contract that supports:
- * - Proposal-specific voter bases (each proposal can have different eligible voters)
+ * - Proposal-specific voter bases
  * - Two voting types: Candidate-based (multiple choices) and Yes/No (binary)
  * - Owner can finish voting and show results
- * - University-style voting with multiple candidates or yes/no questions
+ * - Each proposal can have different eligible voters
  */
-contract SimpleVoting {
+contract AdvancedVoting {
     // State variables
     address public owner;
     
@@ -28,6 +28,12 @@ contract SimpleVoting {
         bool exists;
         uint256 createdAt;
         uint256 finishedAt;
+    }
+    
+    // Candidate structure (for candidate-based voting)
+    struct Candidate {
+        string name;
+        uint256 voteCount;
     }
     
     // Yes/No vote counts (for yes/no voting)
@@ -108,7 +114,7 @@ contract SimpleVoting {
     }
     
     /**
-     * @dev Create a new proposal with candidate-based voting (like university elections)
+     * @dev Create a new proposal with candidate-based voting
      * @param _description Description of the proposal
      * @param _candidates Array of candidate names
      * @return proposalId The ID of the newly created proposal
@@ -161,7 +167,7 @@ contract SimpleVoting {
     }
     
     /**
-     * @dev Add a voter to a specific proposal (owner can give permission to vote on specific proposal)
+     * @dev Add a voter to a specific proposal (only owner)
      * @param _proposalId ID of the proposal
      * @param _voter Address of the voter to add
      */
@@ -255,7 +261,7 @@ contract SimpleVoting {
     }
     
     /**
-     * @dev Finish voting for a proposal (only owner can do this)
+     * @dev Finish voting for a proposal (only owner)
      * @param _proposalId ID of the proposal
      */
     function finishVoting(uint256 _proposalId) public onlyOwner validProposal(_proposalId) {
@@ -266,30 +272,7 @@ contract SimpleVoting {
         
         string memory winner;
         if (proposals[_proposalId].votingType == VotingType.CANDIDATE_BASED) {
-            // Check for ties in candidate-based voting
-            string[] memory candidates = proposalCandidates[_proposalId];
-            require(candidates.length > 0, "No candidates");
-            
-            uint256 maxVotes = candidateVotes[_proposalId][candidates[0]];
-            uint256 candidatesWithMaxVotes = 1;
-            
-            // Find max votes and count how many candidates have that many votes
-            for (uint256 i = 1; i < candidates.length; i++) {
-                uint256 votes = candidateVotes[_proposalId][candidates[i]];
-                if (votes > maxVotes) {
-                    maxVotes = votes;
-                    candidatesWithMaxVotes = 1;
-                } else if (votes == maxVotes && votes > 0) {
-                    candidatesWithMaxVotes++;
-                }
-            }
-            
-            // If multiple candidates have max votes, it's a tie
-            if (candidatesWithMaxVotes > 1 && maxVotes > 0) {
-                winner = "Tie";
-            } else {
-                winner = getWinnerCandidate(_proposalId);
-            }
+            winner = getWinnerCandidate(_proposalId);
         } else {
             uint256 yesCount = yesNoResults[_proposalId].yesCount;
             uint256 noCount = yesNoResults[_proposalId].noCount;
@@ -306,7 +289,7 @@ contract SimpleVoting {
     }
     
     /**
-     * @dev Get the winner candidate for a proposal (highest votes wins)
+     * @dev Get the winner candidate for a proposal
      * @param _proposalId ID of the proposal
      * @return winnerName Name of the winning candidate
      */
@@ -445,66 +428,5 @@ contract SimpleVoting {
             return yesNoResults[_proposalId].yesCount + yesNoResults[_proposalId].noCount;
         }
     }
-    
-    // Legacy functions for backward compatibility (deprecated)
-    
-    /**
-     * @dev DEPRECATED: Use createCandidateProposal or createYesNoProposal instead
-     * @notice This function is kept for backward compatibility but creates a yes/no proposal
-     */
-    function createProposal(string memory _description) public onlyOwner returns (uint256) {
-        return createYesNoProposal(_description);
-    }
-    
-    /**
-     * @dev DEPRECATED: Use voteForCandidate or voteYesNo instead
-     * @notice This function is kept for backward compatibility
-     */
-    function vote(uint256 _proposalId) public validProposal(_proposalId) {
-        require(
-            proposals[_proposalId].votingType == VotingType.YES_NO,
-            "Use voteYesNo function for yes/no proposals"
-        );
-        require(canVoteOnProposal[_proposalId][msg.sender], "You are not eligible to vote on this proposal");
-        require(!hasVoted[_proposalId][msg.sender], "You have already voted for this proposal");
-        require(!proposals[_proposalId].isFinished, "Voting for this proposal has ended");
-        
-        // Default to "yes" for backward compatibility
-        voteYesNo(_proposalId, true);
-    }
-    
-    /**
-     * @dev DEPRECATED: Use getTotalVoteCount instead
-     */
-    function getVoteCount(uint256 _proposalId) public view validProposal(_proposalId) returns (uint256) {
-        return getTotalVoteCount(_proposalId);
-    }
-    
-    /**
-     * @dev DEPRECATED: Legacy voter registration - kept for backward compatibility
-     * @notice New system uses addVoterToProposal for proposal-specific voters
-     */
-    mapping(address => bool) public isRegisteredVoter;
-    address[] public registeredVoters;
-    
-    function registerVoter(address _voter) public onlyOwner {
-        require(_voter != address(0), "Invalid address");
-        require(!isRegisteredVoter[_voter], "Voter already registered");
-        
-        isRegisteredVoter[_voter] = true;
-        registeredVoters.push(_voter);
-    }
-    
-    function registerVoters(address[] memory _voters) public onlyOwner {
-        for (uint256 i = 0; i < _voters.length; i++) {
-            if (_voters[i] != address(0) && !isRegisteredVoter[_voters[i]]) {
-                isRegisteredVoter[_voters[i]] = true;
-                registeredVoters.push(_voters[i]);
-            }
-        }
-    }
-    
-    function getVoterCount() public view returns (uint256) {
-        return registeredVoters.length;
-    }
 }
+

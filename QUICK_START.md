@@ -1,105 +1,100 @@
-# 🗳️ Simple Voting System - Quick Start
+# 🚀 Quick Start Guide
 
-## ✅ What's Been Created
+## Automated Setup (Easiest Way!)
 
-Your simple voting system is ready! Here's what you have:
-
-### Files Created:
-1. **`contracts/SimpleVoting.sol`** - The main voting contract
-2. **`test/SimpleVoting.test.ts`** - Comprehensive tests (19 tests, all passing ✅)
-3. **`scripts/deploy-voting.ts`** - Deployment script
-4. **`VOTING_SYSTEM_GUIDE.md`** - Detailed guide and documentation
-
-## 🚀 Quick Commands
-
+### Step 1: Start Hardhat Node
+Open Terminal 1:
 ```bash
-# Compile the contract
-npm run compile
-
-# Run all tests
-npm test
-
-# Deploy to local Hardhat network
-npm run deploy:local
-
-# Start a local blockchain node
 npm run node
 ```
+**Keep this terminal running!**
 
-## 📝 How It Works
-
-### 1. **Deploy the Contract**
+### Step 2: Deploy and Setup
+Open Terminal 2:
 ```bash
-npm run deploy:local
-```
-This creates the voting contract and sets you as the owner.
-
-### 2. **Register Voters** (Owner only)
-The owner can register voters who are allowed to vote:
-```javascript
-// Register single voter
-await voting.registerVoter(voterAddress);
-
-// Register multiple voters
-await voting.registerVoters([voter1, voter2, voter3]);
+npm run setup
 ```
 
-### 3. **Create Proposals** (Owner only)
-```javascript
-await voting.createProposal("Should we implement feature X?");
+This automatically:
+- ✅ Deploys the contract
+- ✅ Updates `frontend/.env` with contract address  
+- ✅ Creates `frontend/public/hardhat-accounts.json` with all accounts
+- ✅ Accounts will be displayed on the frontend!
+
+### Step 3: Start Frontend
+```bash
+cd frontend
+npm run dev
 ```
 
-### 4. **Vote** (Registered voters only)
-```javascript
-await voting.vote(proposalId); // proposalId starts at 1
-```
+### Step 4: View Accounts on Frontend
+- Open browser at `http://localhost:5173`
+- You'll see **🔑 Hardhat Test Accounts** section at the top
+- Click "Show Private Keys" to see all accounts
+- Copy addresses/keys with one click!
 
-### 5. **View Results** (Anyone)
-```javascript
-const voteCount = await voting.getVoteCount(proposalId);
-const proposal = await voting.getProposal(proposalId);
-```
+### Step 5: Import Owner Account to MetaMask
+- Click "Show Private Keys" on frontend
+- Copy Account 1's private key
+- Open MetaMask → Import Account → Private Key
+- Paste the private key
+- Switch to Hardhat Local network (Chain ID: 31337)
 
-## 🎯 Next Steps
-
-### Option 1: Test It Out
-1. Deploy the contract: `npm run deploy:local`
-2. Use Hardhat console to interact:
-   ```bash
-   npx hardhat console
-   ```
-3. Try the functions!
-
-### Option 2: Build a Frontend
-Create a simple web interface using:
-- **HTML + JavaScript** with ethers.js
-- **React** for a more professional UI
-- **Remix IDE** for quick testing
-
-### Option 3: Add Features
-- Voting deadlines
-- Multiple choice options
-- Vote delegation
-- Anonymous voting with ZK proofs
-
-## 📚 Learn More
-
-Read `VOTING_SYSTEM_GUIDE.md` for:
-- Detailed explanations
-- Code walkthroughs
-- Security features
-- Common issues and solutions
-- Future enhancement ideas
-
-## ✨ Key Features
-
-✅ **Access Control** - Only owner can register voters and create proposals  
-✅ **Voter Verification** - Only registered voters can vote  
-✅ **Double Voting Prevention** - Each voter can vote once per proposal  
-✅ **Transparent Results** - Anyone can view vote counts  
-✅ **Event Logging** - All actions emit events for frontend integration  
+### Step 6: Start Voting! 🎉
 
 ---
 
-**You're all set! Start experimenting and building! 🎉**
+## Hardhat Test Accounts (Auto-Loaded)
 
+| Account | Role | Balance |
+|---------|------|---------|
+| Account 1 | 👑 Owner | 10000 ETH |
+| Account 2-5 | 👤 Voters | 10000 ETH each |
+
+All accounts are pre-funded and ready to use!
+
+**Private keys are displayed on the frontend** - just click "Show Private Keys" button.
+
+---
+
+## What's Changed
+
+✅ **Admin Panel** - Hidden (not needed for now)  
+✅ **Accounts Display** - Shows all Hardhat accounts on frontend  
+✅ **Auto Setup** - Script handles deployment and env updates  
+✅ **Easy Copy** - Click to copy addresses and private keys  
+
+---
+
+## Troubleshooting
+
+### Accounts not showing?
+- Make sure you ran `npm run setup` after starting the node
+- Check that `frontend/public/hardhat-accounts.json` exists
+- Refresh the browser page
+
+### Contract not found?
+- Make sure Hardhat node is running
+- Verify contract address in `frontend/.env` is correct
+- Restart frontend dev server after updating `.env`
+
+### Can't create proposals?
+- Make sure you're using Account 1 (Owner) in MetaMask
+- Verify you're on Hardhat network (Chain ID: 31337)
+
+---
+
+## Scripts Reference
+
+- `npm run node` - Start Hardhat local blockchain
+- `npm run setup` - Deploy contract + setup frontend
+- `npm run deploy:host` - Just deploy (node must be running)
+
+---
+
+## Files Created
+
+1. **`frontend/.env`** - Contract address
+2. **`frontend/public/hardhat-accounts.json`** - All accounts (auto-loaded by frontend)
+
+Both are created automatically by the setup script!
