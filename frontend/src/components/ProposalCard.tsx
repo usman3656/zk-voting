@@ -1,7 +1,6 @@
 import type { Proposal } from '../types/proposal';
 import { VotingType } from '../config/contract';
 import { CandidateVoting } from './CandidateVoting';
-import { YesNoVoting } from './YesNoVoting';
 import { ResultsDisplay } from './ResultsDisplay';
 import { FinishVotingButton } from './FinishVotingButton';
 import { ProposalVoterManager } from './ProposalVoterManager';
@@ -9,7 +8,6 @@ import { ProposalVoterManager } from './ProposalVoterManager';
 interface ProposalCardProps {
   proposal: Proposal;
   onVoteForCandidate: (candidateName: string) => Promise<void>;
-  onVoteYesNo: (isYes: boolean) => Promise<void>;
   onFinishVoting: () => Promise<void>;
   onAddVoter: (voterAddress: string) => Promise<void>;
   onAddVoters: (voterAddresses: string[]) => Promise<void>;
@@ -20,19 +18,18 @@ interface ProposalCardProps {
 export function ProposalCard({
   proposal,
   onVoteForCandidate,
-  onVoteYesNo,
   onFinishVoting,
   onAddVoter,
   onAddVoters,
   isOwner,
   isLoading = false,
 }: ProposalCardProps) {
-  const votingTypeLabel = proposal.votingType === VotingType.CANDIDATE_BASED ? 'Candidate-Based' : 'Yes/No';
+  const votingTypeLabel = 'Candidate-Based';
   const statusBadge = proposal.isFinished ? 'Finished' : 'Active';
 
   return (
     <div style={{
-      border: `2px solid ${proposal.isFinished ? '#9e9e9e' : proposal.votingType === VotingType.CANDIDATE_BASED ? '#4CAF50' : '#2196F3'}`,
+      border: `2px solid ${proposal.isFinished ? '#9e9e9e' : '#4CAF50'}`,
       borderRadius: '12px',
       padding: '24px',
       marginBottom: '20px',
@@ -55,11 +52,11 @@ export function ProposalCard({
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             <span style={{
               padding: '4px 10px',
-              backgroundColor: proposal.votingType === VotingType.CANDIDATE_BASED ? '#e8f5e9' : '#e3f2fd',
+              backgroundColor: '#e8f5e9',
               borderRadius: '12px',
               fontSize: '12px',
               fontWeight: 'bold',
-              color: proposal.votingType === VotingType.CANDIDATE_BASED ? '#2e7d32' : '#1976D2'
+              color: '#2e7d32'
             }}>
               {votingTypeLabel}
             </span>
@@ -152,19 +149,11 @@ export function ProposalCard({
       )}
 
       {/* Voting interface */}
-      {proposal.votingType === VotingType.CANDIDATE_BASED ? (
-        <CandidateVoting
-          proposal={proposal}
-          onVote={onVoteForCandidate}
-          isLoading={isLoading}
-        />
-      ) : (
-        <YesNoVoting
-          proposal={proposal}
-          onVote={onVoteYesNo}
-          isLoading={isLoading}
-        />
-      )}
+      <CandidateVoting
+        proposal={proposal}
+        onVote={onVoteForCandidate}
+        isLoading={isLoading}
+      />
 
       {/* Finish voting button (owner only) */}
       {isOwner && (

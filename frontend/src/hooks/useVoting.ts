@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { BrowserProvider, Contract } from 'ethers';
-import { CONTRACT_ADDRESS, CONTRACT_ABI, VotingType } from '../config/contract';
-import { ensureHardhatNetwork } from '../utils/network';
+import { CONTRACT_ADDRESS, CONTRACT_ABI, VotingType, TARGET_NETWORK_CONFIG } from '../config/contract';
+import { ensureTargetNetwork, checkNetworkSupport } from '../utils/network';
 import type { Proposal } from '../types/proposal';
 
 export function useVoting(provider: BrowserProvider | null, account: string | null) {
@@ -72,7 +72,7 @@ export function useVoting(provider: BrowserProvider | null, account: string | nu
                 if (proposalData.length === 3) {
                   // Old contract format: [id, description, voteCount]
                   [id, description] = proposalData;
-                  votingType = VotingType.YES_NO; // Default to yes/no for old proposals
+                  votingType = VotingType.CANDIDATE_BASED; // Default to candidate-based for old proposals
                   isFinished = false;
                   createdAt = 0n;
                   finishedAt = 0n;
@@ -82,6 +82,11 @@ export function useVoting(provider: BrowserProvider | null, account: string | nu
                   const votingTypeNum = proposalData[2];
                   [id, description, , isFinished, createdAt, finishedAt] = proposalData;
                   votingType = Number(votingTypeNum) as 0 | 1;
+                  // Only CANDIDATE_BASED is supported now
+                  if (votingType !== VotingType.CANDIDATE_BASED) {
+                    console.warn(`Proposal ${i} has unsupported voting type ${votingType}, treating as candidate-based`);
+                    votingType = VotingType.CANDIDATE_BASED;
+                  }
                 } else {
                   console.error(`Proposal ${i} has unexpected format with ${proposalData.length} values`);
                   return null;
@@ -110,41 +115,31 @@ export function useVoting(provider: BrowserProvider | null, account: string | nu
                 proposal.eligibleVoters = eligibleVoters;
                 proposal.eligibleVoterCount = BigInt(eligibleVoters.length);
 
-                // Load data based on voting type
-                if (votingType === VotingType.CANDIDATE_BASED) {
-                  try {
-                    const candidates = await votingContract.getProposalCandidates(i);
-                    proposal.candidates = candidates;
-                    
-                    // Load vote counts for each candidate
-                    const candidateVotes: { [candidate: string]: bigint } = {};
-                    const votePromises = candidates.map(async (candidate: string) => {
-                      const votes = await votingContract.getCandidateVoteCount(i, candidate).catch(() => 0n);
-                      candidateVotes[candidate] = votes;
-                    });
-                    await Promise.all(votePromises);
-                    proposal.candidateVotes = candidateVotes;
+                // Load data based on voting type (only candidate-based supported)
+                try {
+                  const candidates = await votingContract.getProposalCandidates(i);
+                  proposal.candidates = candidates;
+                  
+                  // Load vote counts for each candidate
+                  const candidateVotes: { [candidate: string]: bigint } = {};
+                  const votePromises = candidates.map(async (candidate: string) => {
+                    const votes = await votingContract.getCandidateVoteCount(i, candidate).catch(() => 0n);
+                    candidateVotes[candidate] = votes;
+                  });
+                  await Promise.all(votePromises);
+                  proposal.candidateVotes = candidateVotes;
 
-                    // Load winner if finished
-                    if (isFinished) {
-                      try {
-                        const winner = await votingContract.getWinnerCandidate(i);
-                        proposal.winner = winner;
-                      } catch (e) {
-                        console.error(`Error loading winner for proposal ${i}:`, e);
-                      }
+                  // Load winner if finished
+                  if (isFinished) {
+                    try {
+                      const winner = await votingContract.getWinnerCandidate(i);
+                      proposal.winner = winner;
+                    } catch (e) {
+                      console.error(`Error loading winner for proposal ${i}:`, e);
                     }
-                  } catch (e) {
-                    console.error(`Error loading candidates for proposal ${i}:`, e);
                   }
-                } else if (votingType === VotingType.YES_NO) {
-                  try {
-                    const [yesCount, noCount] = await votingContract.getYesNoResults(i);
-                    proposal.yesCount = yesCount;
-                    proposal.noCount = noCount;
-                  } catch (e) {
-                    console.error(`Error loading yes/no results for proposal ${i}:`, e);
-                  }
+                } catch (e) {
+                  console.error(`Error loading candidates for proposal ${i}:`, e);
                 }
 
                 // Load voter's choice if they voted
@@ -201,6 +196,12 @@ export function useVoting(provider: BrowserProvider | null, account: string | nu
   }, []);
 
   useEffect(() => {
+    if (!CONTRACT_ADDRESS) {
+      setError('Contract address not configured. Please set VITE_CONTRACT_ADDRESS in frontend/.env file');
+      setLoading(false);
+      return;
+    }
+
     if (provider && CONTRACT_ADDRESS && account) {
       const initContract = async () => {
         try {
@@ -208,6 +209,7 @@ export function useVoting(provider: BrowserProvider | null, account: string | nu
             hasProvider: !!provider,
             contractAddress: CONTRACT_ADDRESS,
             account: account,
+            targetNetwork: TARGET_NETWORK_CONFIG?.name,
           });
           
           // Check network FIRST and try to switch automatically
@@ -217,24 +219,36 @@ export function useVoting(provider: BrowserProvider | null, account: string | nu
             name: network.name,
           });
           
-          if (network.chainId !== 31337n) {
-            console.log('Wrong network detected. Attempting to switch to Hardhat network...');
-            try {
-              await ensureHardhatNetwork(provider);
-              console.log('✅ Successfully switched to Hardhat network');
-              await new Promise(resolve => setTimeout(resolve, 500));
-              const newProvider = new BrowserProvider(window.ethereum!);
-              const newNetwork = await newProvider.getNetwork();
-              if (newNetwork.chainId !== 31337n) {
-                throw new Error('Still on wrong network after switch attempt');
+          // Check if current network is supported
+          const networkCheck = await checkNetworkSupport(provider);
+          console.log('Network check:', networkCheck);
+          
+          // Only enforce target network if TARGET_NETWORK_CONFIG is set
+          if (TARGET_NETWORK_CONFIG) {
+            if (!networkCheck.supported || network.chainId !== BigInt(TARGET_NETWORK_CONFIG.chainId)) {
+              const targetChainId = TARGET_NETWORK_CONFIG.chainId;
+              console.log(`Wrong network detected. Attempting to switch to ${TARGET_NETWORK_CONFIG.name} network...`);
+              try {
+                await ensureTargetNetwork(provider);
+                console.log(`✅ Successfully switched to ${TARGET_NETWORK_CONFIG.name} network`);
+                await new Promise(resolve => setTimeout(resolve, 500));
+                const newProvider = new BrowserProvider(window.ethereum!);
+                const newNetwork = await newProvider.getNetwork();
+                const expectedChainId = BigInt(TARGET_NETWORK_CONFIG.chainId);
+                if (newNetwork.chainId !== expectedChainId) {
+                  throw new Error('Still on wrong network after switch attempt');
+                }
+              } catch (switchError: any) {
+                const errorMsg = switchError.message || `Wrong network! Expected Chain ID ${targetChainId} (${TARGET_NETWORK_CONFIG.name}), but connected to Chain ID ${network.chainId.toString()}. Please switch MetaMask to the correct network manually.`;
+                console.error(errorMsg);
+                setError(errorMsg);
+                setLoading(false);
+                return;
               }
-            } catch (switchError: any) {
-              const errorMsg = switchError.message || `Wrong network! Expected Chain ID 31337 (Hardhat), but connected to Chain ID ${network.chainId.toString()}. Please switch MetaMask to Hardhat Local network manually.`;
-              console.error(errorMsg);
-              setError(errorMsg);
-              setLoading(false);
-              return;
             }
+          } else if (!networkCheck.supported) {
+            // No target network config, but current network is not supported
+            console.warn('Current network is not in supported list, but continuing anyway...');
           }
           
           // Check if contract exists
@@ -257,7 +271,9 @@ export function useVoting(provider: BrowserProvider | null, account: string | nu
           const errorMsg = err instanceof Error ? err.message : 'Failed to initialize contract';
           
           if (errorMsg.includes('could not decode result data') || errorMsg.includes('value="0x"')) {
-            setError(`Contract not found. Make sure: 1) You're on Hardhat network (Chain ID: 31337), 2) Contract is deployed, 3) Contract address is correct: ${CONTRACT_ADDRESS}`);
+            const targetNetwork = TARGET_NETWORK_CONFIG?.name || 'target network';
+            const targetChainId = TARGET_NETWORK_CONFIG?.chainId || 'unknown';
+            setError(`Contract not found. Make sure: 1) You're on ${targetNetwork} network (Chain ID: ${targetChainId}), 2) Contract is deployed, 3) Contract address is correct: ${CONTRACT_ADDRESS}`);
           } else {
             setError(errorMsg);
           }
@@ -322,50 +338,9 @@ export function useVoting(provider: BrowserProvider | null, account: string | nu
     }
   };
 
-  // Create yes/no proposal
-  const createYesNoProposal = async (description: string) => {
-    if (!contract) throw new Error('Contract not loaded');
-    if (!account) throw new Error('Please connect your wallet');
-    
-    try {
-      // First check if function exists by trying to estimate gas
-      try {
-        await contract.createYesNoProposal.estimateGas(description);
-      } catch (estimateError: any) {
-        const errorMsg = estimateError.message || String(estimateError);
-        if (errorMsg.includes('does not exist') || errorMsg.includes('missing function') || errorMsg.includes('execution reverted')) {
-          throw new Error('Contract does not have createYesNoProposal function. Please redeploy the contract with the new code.');
-        }
-        // If it's a different error (like not owner), let it pass through to the actual call
-      }
-      
-      const tx = await contract.createYesNoProposal(description);
-      await tx.wait();
-      await refresh();
-    } catch (err: any) {
-      console.error('Error creating yes/no proposal:', err);
-      let message = 'Failed to create yes/no proposal';
-      
-      if (err.message) {
-        message = err.message;
-        if (err.message.includes('Only owner')) {
-          message = 'Only the contract owner can create proposals. Make sure you are using the owner account.';
-        } else if (err.message.includes('does not exist') || err.message.includes('missing function')) {
-          message = 'The contract does not have the createYesNoProposal function. Please redeploy the updated contract.';
-        } else if (err.message.includes('Internal JSON-RPC error')) {
-          message = 'Transaction failed. Possible reasons: 1) You are not the contract owner, 2) Contract needs to be redeployed with new code. Check the console for details.';
-        } else if (err.reason) {
-          message = err.reason;
-        }
-      }
-      
-      throw new Error(message);
-    }
-  };
-
-  // Legacy createProposal (creates yes/no proposal for backward compatibility)
+  // Legacy createProposal (deprecated - no longer supported)
   const createProposal = async (description: string) => {
-    return createYesNoProposal(description);
+    throw new Error('createProposal is deprecated. Use createCandidateProposal with at least one candidate.');
   };
 
   // Add voter to specific proposal
@@ -410,20 +385,6 @@ export function useVoting(provider: BrowserProvider | null, account: string | nu
     }
   };
 
-  // Vote yes or no
-  const voteYesNo = async (proposalId: bigint, isYes: boolean) => {
-    if (!contract) throw new Error('Contract not loaded');
-    
-    try {
-      const tx = await contract.voteYesNo(proposalId, isYes);
-      await tx.wait();
-      await refresh();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to vote';
-      throw new Error(message);
-    }
-  };
-
   // Finish voting (owner only)
   const finishVoting = async (proposalId: bigint) => {
     if (!contract) throw new Error('Contract not loaded');
@@ -438,10 +399,9 @@ export function useVoting(provider: BrowserProvider | null, account: string | nu
     }
   };
 
-  // Legacy vote function (backward compatibility)
+  // Legacy vote function (deprecated - no longer supported)
   const vote = async (proposalId: bigint) => {
-    // Legacy vote defaults to "yes" for yes/no proposals
-    return voteYesNo(proposalId, true);
+    throw new Error('vote is deprecated. Use voteForCandidate with a candidate name.');
   };
 
   // Check if has voted
@@ -494,11 +454,9 @@ export function useVoting(provider: BrowserProvider | null, account: string | nu
     refresh,
     // New functions
     createCandidateProposal,
-    createYesNoProposal,
     addVoterToProposal,
     addVotersToProposal,
     voteForCandidate,
-    voteYesNo,
     finishVoting,
     // Legacy functions (backward compatibility)
     createProposal,

@@ -5,9 +5,9 @@ pragma solidity ^0.8.28;
  * @title SimpleVoting
  * @dev An advanced voting system contract that supports:
  * - Proposal-specific voter bases (each proposal can have different eligible voters)
- * - Two voting types: Candidate-based (multiple choices) and Yes/No (binary)
+ * - Candidate-based voting (multiple choices)
  * - Owner can finish voting and show results
- * - University-style voting with multiple candidates or yes/no questions
+ * - University-style voting with multiple candidates
  */
 contract SimpleVoting {
     // State variables
@@ -15,8 +15,7 @@ contract SimpleVoting {
     
     // Voting type enum
     enum VotingType {
-        CANDIDATE_BASED,  // Multiple candidates, choose one
-        YES_NO           // Binary yes/no question
+        CANDIDATE_BASED  // Multiple candidates, choose one
     }
     
     // Proposal structure
@@ -30,12 +29,6 @@ contract SimpleVoting {
         uint256 finishedAt;
     }
     
-    // Yes/No vote counts (for yes/no voting)
-    struct YesNoResults {
-        uint256 yesCount;
-        uint256 noCount;
-    }
-    
     // Mapping of proposal ID to Proposal
     mapping(uint256 => Proposal) public proposals;
     uint256 public proposalCount;
@@ -45,9 +38,6 @@ contract SimpleVoting {
     
     // Mapping of proposal ID to candidate name to vote count
     mapping(uint256 => mapping(string => uint256)) public candidateVotes;
-    
-    // Mapping of proposal ID to yes/no results
-    mapping(uint256 => YesNoResults) public yesNoResults;
     
     // Mapping of proposal ID to array of eligible voter addresses
     mapping(uint256 => address[]) public proposalVoters;
@@ -60,9 +50,6 @@ contract SimpleVoting {
     
     // Track which candidate each voter chose (for candidate-based)
     mapping(uint256 => mapping(address => string)) public voterChoice;
-    
-    // Track yes/no choice of each voter
-    mapping(uint256 => mapping(address => bool)) public voterYesNoChoice; // true = yes, false = no
     
     // Events
     event ProposalCreated(
@@ -138,29 +125,6 @@ contract SimpleVoting {
     }
     
     /**
-     * @dev Create a new proposal with yes/no voting
-     * @param _description Description of the proposal (the yes/no question)
-     * @return proposalId The ID of the newly created proposal
-     */
-    function createYesNoProposal(
-        string memory _description
-    ) public onlyOwner returns (uint256) {
-        proposalCount++;
-        proposals[proposalCount] = Proposal({
-            id: proposalCount,
-            description: _description,
-            votingType: VotingType.YES_NO,
-            isFinished: false,
-            exists: true,
-            createdAt: block.timestamp,
-            finishedAt: 0
-        });
-        
-        emit ProposalCreated(proposalCount, _description, VotingType.YES_NO);
-        return proposalCount;
-    }
-    
-    /**
      * @dev Add a voter to a specific proposal (owner can give permission to vote on specific proposal)
      * @param _proposalId ID of the proposal
      * @param _voter Address of the voter to add
@@ -229,32 +193,6 @@ contract SimpleVoting {
     }
     
     /**
-     * @dev Vote yes or no in yes/no voting
-     * @param _proposalId ID of the proposal
-     * @param _isYes true for yes, false for no
-     */
-    function voteYesNo(
-        uint256 _proposalId,
-        bool _isYes
-    ) public validProposal(_proposalId) canVote(_proposalId) {
-        require(
-            proposals[_proposalId].votingType == VotingType.YES_NO,
-            "This proposal is not yes/no voting"
-        );
-        
-        hasVoted[_proposalId][msg.sender] = true;
-        voterYesNoChoice[_proposalId][msg.sender] = _isYes;
-        
-        if (_isYes) {
-            yesNoResults[_proposalId].yesCount++;
-            emit VoteCast(msg.sender, _proposalId, "Yes");
-        } else {
-            yesNoResults[_proposalId].noCount++;
-            emit VoteCast(msg.sender, _proposalId, "No");
-        }
-    }
-    
-    /**
      * @dev Finish voting for a proposal (only owner can do this)
      * @param _proposalId ID of the proposal
      */
@@ -264,42 +202,30 @@ contract SimpleVoting {
         proposals[_proposalId].isFinished = true;
         proposals[_proposalId].finishedAt = block.timestamp;
         
+        // Check for ties in candidate-based voting
+        string[] memory candidates = proposalCandidates[_proposalId];
+        require(candidates.length > 0, "No candidates");
+        
+        uint256 maxVotes = candidateVotes[_proposalId][candidates[0]];
+        uint256 candidatesWithMaxVotes = 1;
+        
+        // Find max votes and count how many candidates have that many votes
+        for (uint256 i = 1; i < candidates.length; i++) {
+            uint256 votes = candidateVotes[_proposalId][candidates[i]];
+            if (votes > maxVotes) {
+                maxVotes = votes;
+                candidatesWithMaxVotes = 1;
+            } else if (votes == maxVotes && votes > 0) {
+                candidatesWithMaxVotes++;
+            }
+        }
+        
+        // If multiple candidates have max votes, it's a tie
         string memory winner;
-        if (proposals[_proposalId].votingType == VotingType.CANDIDATE_BASED) {
-            // Check for ties in candidate-based voting
-            string[] memory candidates = proposalCandidates[_proposalId];
-            require(candidates.length > 0, "No candidates");
-            
-            uint256 maxVotes = candidateVotes[_proposalId][candidates[0]];
-            uint256 candidatesWithMaxVotes = 1;
-            
-            // Find max votes and count how many candidates have that many votes
-            for (uint256 i = 1; i < candidates.length; i++) {
-                uint256 votes = candidateVotes[_proposalId][candidates[i]];
-                if (votes > maxVotes) {
-                    maxVotes = votes;
-                    candidatesWithMaxVotes = 1;
-                } else if (votes == maxVotes && votes > 0) {
-                    candidatesWithMaxVotes++;
-                }
-            }
-            
-            // If multiple candidates have max votes, it's a tie
-            if (candidatesWithMaxVotes > 1 && maxVotes > 0) {
-                winner = "Tie";
-            } else {
-                winner = getWinnerCandidate(_proposalId);
-            }
+        if (candidatesWithMaxVotes > 1 && maxVotes > 0) {
+            winner = "Tie";
         } else {
-            uint256 yesCount = yesNoResults[_proposalId].yesCount;
-            uint256 noCount = yesNoResults[_proposalId].noCount;
-            if (yesCount > noCount) {
-                winner = "Yes";
-            } else if (noCount > yesCount) {
-                winner = "No";
-            } else {
-                winner = "Tie";
-            }
+            winner = getWinnerCandidate(_proposalId);
         }
         
         emit VotingFinished(_proposalId, winner);
@@ -377,21 +303,6 @@ contract SimpleVoting {
     }
     
     /**
-     * @dev Get yes/no results for a proposal
-     */
-    function getYesNoResults(uint256 _proposalId) public view validProposal(_proposalId)
-        returns (uint256 yesCount, uint256 noCount) {
-        require(
-            proposals[_proposalId].votingType == VotingType.YES_NO,
-            "Not a yes/no proposal"
-        );
-        return (
-            yesNoResults[_proposalId].yesCount,
-            yesNoResults[_proposalId].noCount
-        );
-    }
-    
-    /**
      * @dev Get all voters for a proposal
      */
     function getProposalVoters(uint256 _proposalId) public view validProposal(_proposalId)
@@ -421,12 +332,7 @@ contract SimpleVoting {
     function getVoterChoice(uint256 _proposalId, address _voter)
         public view validProposal(_proposalId) returns (string memory) {
         require(hasVoted[_proposalId][_voter], "Voter has not voted");
-        
-        if (proposals[_proposalId].votingType == VotingType.CANDIDATE_BASED) {
-            return voterChoice[_proposalId][_voter];
-        } else {
-            return voterYesNoChoice[_proposalId][_voter] ? "Yes" : "No";
-        }
+        return voterChoice[_proposalId][_voter];
     }
     
     /**
@@ -434,43 +340,30 @@ contract SimpleVoting {
      */
     function getTotalVoteCount(uint256 _proposalId) public view validProposal(_proposalId)
         returns (uint256) {
-        if (proposals[_proposalId].votingType == VotingType.CANDIDATE_BASED) {
-            uint256 total = 0;
-            string[] memory candidates = proposalCandidates[_proposalId];
-            for (uint256 i = 0; i < candidates.length; i++) {
-                total += candidateVotes[_proposalId][candidates[i]];
-            }
-            return total;
-        } else {
-            return yesNoResults[_proposalId].yesCount + yesNoResults[_proposalId].noCount;
+        uint256 total = 0;
+        string[] memory candidates = proposalCandidates[_proposalId];
+        for (uint256 i = 0; i < candidates.length; i++) {
+            total += candidateVotes[_proposalId][candidates[i]];
         }
+        return total;
     }
     
     // Legacy functions for backward compatibility (deprecated)
     
     /**
-     * @dev DEPRECATED: Use createCandidateProposal or createYesNoProposal instead
-     * @notice This function is kept for backward compatibility but creates a yes/no proposal
+     * @dev DEPRECATED: Use createCandidateProposal instead
+     * @notice This function is kept for backward compatibility but is no longer supported
      */
     function createProposal(string memory _description) public onlyOwner returns (uint256) {
-        return createYesNoProposal(_description);
+        revert("createProposal is deprecated. Use createCandidateProposal with at least one candidate.");
     }
     
     /**
-     * @dev DEPRECATED: Use voteForCandidate or voteYesNo instead
-     * @notice This function is kept for backward compatibility
+     * @dev DEPRECATED: Use voteForCandidate instead
+     * @notice This function is kept for backward compatibility but is no longer supported
      */
     function vote(uint256 _proposalId) public validProposal(_proposalId) {
-        require(
-            proposals[_proposalId].votingType == VotingType.YES_NO,
-            "Use voteYesNo function for yes/no proposals"
-        );
-        require(canVoteOnProposal[_proposalId][msg.sender], "You are not eligible to vote on this proposal");
-        require(!hasVoted[_proposalId][msg.sender], "You have already voted for this proposal");
-        require(!proposals[_proposalId].isFinished, "Voting for this proposal has ended");
-        
-        // Default to "yes" for backward compatibility
-        voteYesNo(_proposalId, true);
+        revert("vote is deprecated. Use voteForCandidate with a candidate name.");
     }
     
     /**

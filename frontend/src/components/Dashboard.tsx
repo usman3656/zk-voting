@@ -3,7 +3,6 @@ import { useWallet } from '../hooks/useWallet';
 import { useVoting } from '../hooks/useVoting';
 import { ProposalCard } from './ProposalCard';
 import { CreateCandidateProposal } from './CreateCandidateProposal';
-import { CreateYesNoProposal } from './CreateYesNoProposal';
 import { HardhatAccounts } from './HardhatAccounts';
 
 export function Dashboard() {
@@ -18,11 +17,9 @@ export function Dashboard() {
     error,
     refresh,
     createCandidateProposal,
-    createYesNoProposal,
     addVoterToProposal,
     addVotersToProposal,
     voteForCandidate,
-    voteYesNo,
     finishVoting,
   } = useVoting(provider, account);
 
@@ -123,16 +120,10 @@ export function Dashboard() {
       
       {/* Create Proposal Sections - Always visible to owners */}
       {isOwner && (
-        <>
-          <CreateCandidateProposal
-            onCreateProposal={createCandidateProposal}
-            isOwner={isOwner}
-          />
-          <CreateYesNoProposal
-            onCreateProposal={createYesNoProposal}
-            isOwner={isOwner}
-          />
-        </>
+        <CreateCandidateProposal
+          onCreateProposal={createCandidateProposal}
+          isOwner={isOwner}
+        />
       )}
 
       {/* Admin Panel for legacy voter registration - HIDDEN */}
@@ -177,14 +168,6 @@ export function Dashboard() {
                   setVotingProposalId(proposal.id);
                   try {
                     await voteForCandidate(proposal.id, candidateName);
-                  } finally {
-                    setVotingProposalId(null);
-                  }
-                }}
-                onVoteYesNo={async (isYes) => {
-                  setVotingProposalId(proposal.id);
-                  try {
-                    await voteYesNo(proposal.id, isYes);
                   } finally {
                     setVotingProposalId(null);
                   }

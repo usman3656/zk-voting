@@ -8,9 +8,15 @@
     "test": "hardhat test",
     "deploy:local": "hardhat run scripts/deploy-voting.ts --network hardhat",
     "deploy:host": "hardhat run scripts/deploy-voting.ts --network localhost",
+    "deploy:sepolia": "hardhat run scripts/deploy-testnet.ts --network sepolia",
+    "deploy:goerli": "hardhat run scripts/deploy-testnet.ts --network goerli",
+    "deploy:holesky": "hardhat run scripts/deploy-testnet.ts --network holesky",
     "register:voters": "hardhat run scripts/register-voters.ts --network localhost",
     "node": "hardhat node",
-    "setup": "hardhat run scripts/setup-and-deploy.ts --network localhost"
+    "setup": "hardhat run scripts/setup-and-deploy.ts --network localhost",
+    "setup:sepolia": "hardhat run scripts/setup-testnet.ts --network sepolia",
+    "setup:goerli": "hardhat run scripts/setup-testnet.ts --network goerli",
+    "setup:holesky": "hardhat run scripts/setup-testnet.ts --network holesky"
   },
   "keywords": [],
   "author": "",

@@ -1,7 +1,7 @@
 export interface Proposal {
   id: bigint;
   description: string;
-  votingType: 0 | 1; // 0 = CANDIDATE_BASED, 1 = YES_NO
+  votingType: 0; // 0 = CANDIDATE_BASED (only candidate-based voting is supported)
   isFinished: boolean;
   createdAt: bigint;
   finishedAt: bigint;
@@ -9,9 +9,6 @@ export interface Proposal {
   candidates?: string[];
   candidateVotes?: { [candidate: string]: bigint };
   winner?: string;
-  // For yes/no proposals
-  yesCount?: bigint;
-  noCount?: bigint;
   // User-specific
   canVote?: boolean;
   hasVoted?: boolean;

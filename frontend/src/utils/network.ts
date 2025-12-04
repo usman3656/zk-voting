@@ -1,24 +1,24 @@
 import { BrowserProvider } from 'ethers';
+import { getNetworkByChainId, type NetworkConfig, SUPPORTED_NETWORKS } from '../config/networks';
+import { TARGET_NETWORK, TARGET_NETWORK_CONFIG } from '../config/contract';
 
-const HARDHAT_CHAIN_ID = 31337;
-const HARDHAT_NETWORK = {
-  chainId: `0x${HARDHAT_CHAIN_ID.toString(16)}`, // 0x7a69 in hex
-  chainName: 'Hardhat Local',
-  nativeCurrency: {
-    name: 'Ethereum',
-    symbol: 'ETH',
-    decimals: 18,
-  },
-  rpcUrls: ['http://127.0.0.1:8545'],
-  blockExplorerUrls: [] as string[],
-};
+// Convert network config to MetaMask format
+function networkToMetaMaskConfig(network: NetworkConfig) {
+  return {
+    chainId: network.chainIdHex,
+    chainName: network.name,
+    nativeCurrency: network.nativeCurrency,
+    rpcUrls: network.rpcUrls,
+    blockExplorerUrls: network.blockExplorerUrls,
+  };
+}
 
-export async function switchToHardhatNetwork(ethereum: any): Promise<boolean> {
+export async function switchToNetwork(ethereum: any, network: NetworkConfig): Promise<boolean> {
   try {
     // Try to switch to the network
     await ethereum.request({
       method: 'wallet_switchEthereumChain',
-      params: [{ chainId: HARDHAT_NETWORK.chainId }],
+      params: [{ chainId: network.chainIdHex }],
     });
     return true;
   } catch (switchError: any) {
@@ -28,35 +28,62 @@ export async function switchToHardhatNetwork(ethereum: any): Promise<boolean> {
         // Try to add the network
         await ethereum.request({
           method: 'wallet_addEthereumChain',
-          params: [HARDHAT_NETWORK],
+          params: [networkToMetaMaskConfig(network)],
         });
         return true;
       } catch (addError: any) {
         console.error('Error adding network:', addError);
-        throw new Error(`Failed to add Hardhat network. Please add it manually. Error: ${addError.message}`);
+        throw new Error(`Failed to add ${network.name} network. Please add it manually. Error: ${addError.message}`);
       }
     } else {
       // Other error (e.g., user rejected)
-      throw new Error(`Failed to switch network. Please switch to Hardhat Local network manually. Error: ${switchError.message}`);
+      throw new Error(`Failed to switch network. Please switch to ${network.name} network manually. Error: ${switchError.message}`);
     }
   }
 }
 
-export async function ensureHardhatNetwork(provider: BrowserProvider): Promise<void> {
+export async function ensureTargetNetwork(provider: BrowserProvider): Promise<void> {
   if (!window.ethereum) {
     throw new Error('MetaMask is not installed');
   }
 
+  if (!TARGET_NETWORK_CONFIG) {
+    throw new Error(`Target network "${TARGET_NETWORK}" is not supported. Supported networks: ${Object.keys(SUPPORTED_NETWORKS).join(', ')}`);
+  }
+
   const network = await provider.getNetwork();
+  const targetChainId = BigInt(TARGET_NETWORK_CONFIG.chainId);
   
-  if (network.chainId === BigInt(HARDHAT_CHAIN_ID)) {
+  if (network.chainId === targetChainId) {
     return; // Already on correct network
   }
 
   // Try to switch/add network
-  await switchToHardhatNetwork(window.ethereum);
+  await switchToNetwork(window.ethereum, TARGET_NETWORK_CONFIG);
   
   // Wait a bit for network to switch
   await new Promise(resolve => setTimeout(resolve, 1000));
+}
+
+// Legacy function for backward compatibility
+export async function ensureHardhatNetwork(provider: BrowserProvider): Promise<void> {
+  return ensureTargetNetwork(provider);
+}
+
+// Check if current network is supported
+export async function checkNetworkSupport(provider: BrowserProvider): Promise<{ supported: boolean; network: NetworkConfig | null }> {
+  try {
+    const network = await provider.getNetwork();
+    const networkConfig = getNetworkByChainId(network.chainId);
+    return {
+      supported: networkConfig !== null,
+      network: networkConfig,
+    };
+  } catch (error) {
+    return {
+      supported: false,
+      network: null,
+    };
+  }
 }
 

@@ -80,10 +80,10 @@ async function deployContract(): Promise<string> {
 
 function updateEnvFile(contractAddress: string) {
   const envPath = path.join(frontendDir, '.env');
-  const envContent = `VITE_CONTRACT_ADDRESS=${contractAddress}\n`;
+  const envContent = `VITE_CONTRACT_ADDRESS=${contractAddress}\nVITE_NETWORK=hardhat\n`;
   
   fs.writeFileSync(envPath, envContent, 'utf8');
-  console.log(`✅ Updated frontend/.env with contract address`);
+  console.log(`✅ Updated frontend/.env with contract address and network`);
 }
 
 function saveAccountsToFrontend(accounts: typeof HARDHAT_ACCOUNTS, contractAddress: string) {
