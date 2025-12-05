@@ -172,11 +172,15 @@ export async function generateZKProof(
 /**
  * Format proof for Solidity contract
  */
-export function formatProofForContract(proof: ZKProof): {
-  proof: [bigint, bigint, [bigint, bigint], [bigint, bigint], bigint, bigint];
+export function formatProofForContract(
+  proof: ZKProof,
+  fallbackInputs?: { proposalId: bigint; merkleRoot: bigint; nullifier: bigint; numCandidates: bigint }
+): {
+  proof: [bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint];
   publicInputs: [bigint, bigint, bigint, bigint];
 } {
-  // Format proof as [a0, a1, [b00, b01], [b10, b11], c0, c1]
+  // Format proof as flat array [a0, a1, b00, b01, b10, b11, c0, c1]
+  // Contract expects uint256[8] which is a flat array
   const a = [BigInt(proof.proof.pi_a[0]), BigInt(proof.proof.pi_a[1])];
   const b = [
     [BigInt(proof.proof.pi_b[0][0]), BigInt(proof.proof.pi_b[0][1])],
@@ -185,15 +189,48 @@ export function formatProofForContract(proof: ZKProof): {
   const c = [BigInt(proof.proof.pi_c[0]), BigInt(proof.proof.pi_c[1])];
 
   // Format public inputs as [proposalId, merkleRoot, nullifier, numCandidates]
-  const publicInputs: [bigint, bigint, bigint, bigint] = [
-    BigInt(proof.publicSignals[0]),
-    BigInt(proof.publicSignals[1]),
-    BigInt(proof.publicSignals[2]),
-    BigInt(proof.publicSignals[3])
-  ];
+  // Use publicSignals if available, otherwise fall back to original inputs
+  let publicInputs: [bigint, bigint, bigint, bigint];
+  
+  if (proof.publicSignals && proof.publicSignals.length >= 4) {
+    // Use public signals from proof
+    publicInputs = [
+      BigInt(proof.publicSignals[0]),
+      BigInt(proof.publicSignals[1]),
+      BigInt(proof.publicSignals[2]),
+      BigInt(proof.publicSignals[3])
+    ];
+  } else if (fallbackInputs) {
+    // Use fallback inputs when publicSignals is empty
+    publicInputs = [
+      fallbackInputs.proposalId,
+      fallbackInputs.merkleRoot,
+      fallbackInputs.nullifier,
+      fallbackInputs.numCandidates
+    ];
+  } else {
+    throw new Error(
+      'Cannot format proof: publicSignals is empty and no fallback inputs provided. ' +
+      `publicSignals length: ${proof.publicSignals?.length || 0}`
+    );
+  }
 
+  // Return flat array: [a0, a1, b00, b01, b10, b11, c0, c1]
+  const proofArray: [bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint] = [
+    a[0], a[1], b[0][0], b[0][1], b[1][0], b[1][1], c[0], c[1]
+  ];
+  
+  // Validate proof values are in the correct field range (less than the scalar field)
+  // Scalar field size for BN254: 21888242871839275222246405745257275088548364400416034343698204186575808495617
+  const SCALAR_FIELD = BigInt('21888242871839275222246405745257275088548364400416034343698204186575808495617');
+  for (let i = 0; i < proofArray.length; i++) {
+    if (proofArray[i] >= SCALAR_FIELD) {
+      throw new Error(`Proof value at index ${i} is out of field range: ${proofArray[i].toString()}`);
+    }
+  }
+  
   return {
-    proof: [a[0], a[1], b[0], b[1], c[0], c[1]] as any,
+    proof: proofArray,
     publicInputs
   };
 }
@@ -236,7 +273,11 @@ export async function verifyZKProof(
   vkeyPath: string
 ): Promise<boolean> {
   const vkey = await fetch(vkeyPath).then(r => r.json());
-  const isValid = await groth16.verify(vkey, proof.publicSignals, proof.proof);
+  // For circuits with 0 public inputs, use empty array
+  const publicSignals = proof.publicSignals && proof.publicSignals.length > 0 
+    ? proof.publicSignals 
+    : [];
+  const isValid = await groth16.verify(vkey, publicSignals, proof.proof);
   return isValid;
 }
 

@@ -261,18 +261,57 @@ export function ZKVoting({ proposalId, candidates, merkleRoot, voterAddresses, v
       console.log('✅ PROOF GENERATION COMPLETE');
       console.log('');
       
+      // Verify proof client-side before sending to contract (optional, for debugging)
+      console.log('🔍 VERIFYING PROOF CLIENT-SIDE (optional check):');
+      try {
+        const { verifyZKProof } = await import('../utils/zkVoting');
+        const vkeyPath = '/circuits/build/verification_key.json';
+        
+        // For circuits with 0 public inputs, pass empty array
+        const publicSignalsForVerify = zkProof.publicSignals && zkProof.publicSignals.length > 0 
+          ? zkProof.publicSignals 
+          : [];
+        
+        console.log('  Public signals for verification:', publicSignalsForVerify.length);
+        const isValid = await verifyZKProof(zkProof, vkeyPath);
+        if (!isValid) {
+          console.warn('  ⚠️ Client-side verification failed - proof may be invalid');
+          console.warn('  ⚠️ This could mean:');
+          console.warn('     1. Verification key doesn\'t match the circuit');
+          console.warn('     2. Proof generation had an error');
+          console.warn('     3. Circuit inputs were incorrect');
+          console.warn('  ⚠️ Proceeding anyway - on-chain verification will be the final check');
+        } else {
+          console.log('  ✅ Client-side verification passed');
+        }
+      } catch (verifyError: any) {
+        console.warn('  ⚠️ Client-side verification error:', verifyError.message || verifyError);
+        // If verification key is not available, warn but continue
+        if (verifyError.message?.includes('fetch') || verifyError.message?.includes('404')) {
+          console.warn('  ⚠️ Verification key not found, skipping client-side verification');
+        } else {
+          console.warn('  ⚠️ Verification failed, but continuing - on-chain verification will be definitive');
+        }
+      }
+      console.log('');
+      
       // Format proof for contract
       console.log('📦 FORMATTING PROOF FOR CONTRACT:');
-      const { proof, publicInputs } = formatProofForContract(zkProof);
-      console.log('  Proof formatted:');
+      const { proof, publicInputs } = formatProofForContract(zkProof, {
+        proposalId: proposalIdBigInt,
+        merkleRoot: merkleRootBigInt,
+        nullifier,
+        numCandidates: numCandidatesBigInt
+      });
+      console.log('  Proof formatted (flat array [a0, a1, b00, b01, b10, b11, c0, c1]):');
       console.log('    a[0]:', proof[0].toString().slice(0, 30) + '...');
       console.log('    a[1]:', proof[1].toString().slice(0, 30) + '...');
-      console.log('    b[0][0]:', proof[2][0].toString().slice(0, 30) + '...');
-      console.log('    b[0][1]:', proof[2][1].toString().slice(0, 30) + '...');
-      console.log('    b[1][0]:', proof[3][0].toString().slice(0, 30) + '...');
-      console.log('    b[1][1]:', proof[3][1].toString().slice(0, 30) + '...');
-      console.log('    c[0]:', proof[4].toString().slice(0, 30) + '...');
-      console.log('    c[1]:', proof[5].toString().slice(0, 30) + '...');
+      console.log('    b[0][0]:', proof[2].toString().slice(0, 30) + '...');
+      console.log('    b[0][1]:', proof[3].toString().slice(0, 30) + '...');
+      console.log('    b[1][0]:', proof[4].toString().slice(0, 30) + '...');
+      console.log('    b[1][1]:', proof[5].toString().slice(0, 30) + '...');
+      console.log('    c[0]:', proof[6].toString().slice(0, 30) + '...');
+      console.log('    c[1]:', proof[7].toString().slice(0, 30) + '...');
       console.log('  Public inputs:');
       console.log('    [0] proposalId:', publicInputs[0].toString());
       console.log('    [1] merkleRoot:', publicInputs[1].toString());
@@ -286,32 +325,195 @@ export function ZKVoting({ proposalId, candidates, merkleRoot, voterAddresses, v
       console.log('  Commitment:', commitment);
       console.log('');
 
-      // Convert proof to contract format
-      // Solidity expects: [a0, a1, [b00, b01], [b10, b11], c0, c1]
-      const proofArray: [bigint, bigint, [bigint, bigint], [bigint, bigint], bigint, bigint] = [
-        proof[0],
-        proof[1],
-        proof[2],
-        proof[3],
-        proof[4],
-        proof[5]
-      ];
+      // Proof is already in the correct format: flat array [a0, a1, b00, b01, b10, b11, c0, c1]
+      // Contract expects uint256[8] which matches this format
 
       // Submit vote to contract
       console.log('📤 SUBMITTING VOTE TO CONTRACT:');
       console.log('  Proposal ID:', proposalId.toString());
       console.log('  Commitment:', commitment);
-      console.log('  Gas limit: 5000000');
+      console.log('  Proof length:', proof.length, '(expected: 8)');
+      console.log('  Public inputs length:', publicInputs.length, '(expected: 4)');
+      console.log('  Public inputs:');
+      console.log('    [0] proposalId:', publicInputs[0].toString());
+      console.log('    [1] merkleRoot:', publicInputs[1].toString());
+      console.log('    [2] nullifier:', publicInputs[2].toString());
+      console.log('    [3] numCandidates:', publicInputs[3].toString());
+      
+      // Validate inputs
+      if (proof.length !== 8) {
+        throw new Error(`Invalid proof length: expected 8, got ${proof.length}`);
+      }
+      if (publicInputs.length !== 4) {
+        throw new Error(`Invalid public inputs length: expected 4, got ${publicInputs.length}`);
+      }
+      
+      // Validate contract state before attempting transaction
+      console.log('  🔍 Validating contract state...');
+      setStatus('Validating contract state...');
+      
+      try {
+        // Check if ZK verifier is set
+        const zkVerifierAddress = await contract.zkVerifier();
+        console.log('  ZK Verifier address:', zkVerifierAddress);
+        if (!zkVerifierAddress || zkVerifierAddress === '0x0000000000000000000000000000000000000000') {
+          throw new Error('ZK verifier not set. The contract owner needs to set the ZK verifier address.');
+        }
+        
+        // Check proposal exists and get its state
+        const proposal = await contract.proposals(proposalId);
+        console.log('  Proposal:', proposal);
+        console.log('  Proposal ID:', proposal.id?.toString());
+        console.log('  Proposal voting type:', proposal.votingType?.toString(), '(0 = CANDIDATE_BASED, 1 = ZK_CANDIDATE_BASED)');
+        console.log('  Proposal finished:', proposal.isFinished);
+        
+        // Check if proposal exists (id should match)
+        if (!proposal || proposal.id?.toString() !== proposalId.toString()) {
+          throw new Error('Proposal does not exist');
+        }
+        // In Solidity enum: 0 = CANDIDATE_BASED, 1 = ZK_CANDIDATE_BASED
+        if (proposal.votingType?.toString() !== '1') {
+          throw new Error(`This proposal is not a ZK voting proposal. Voting type: ${proposal.votingType} (expected: 1 for ZK_CANDIDATE_BASED)`);
+        }
+        if (proposal.isFinished) {
+          throw new Error('Voting for this proposal has ended');
+        }
+        
+        // Check Merkle root
+        const storedMerkleRoot = await contract.proposalMerkleRoots(proposalId);
+        const expectedMerkleRoot = '0x' + publicInputs[1].toString(16).padStart(64, '0');
+        console.log('  Stored Merkle root:', storedMerkleRoot);
+        console.log('  Expected Merkle root:', expectedMerkleRoot);
+        if (storedMerkleRoot.toLowerCase() !== expectedMerkleRoot.toLowerCase()) {
+          throw new Error(`Merkle root mismatch. Stored: ${storedMerkleRoot}, Expected: ${expectedMerkleRoot}`);
+        }
+        
+        // Note: We skip candidate count validation here because proposalCandidates mapping
+        // may not be directly accessible via the ABI. The contract will validate this anyway.
+        console.log('  Expected candidates count:', publicInputs[3].toString());
+        console.log('  Frontend candidates count:', candidates.length);
+        if (candidates.length !== Number(publicInputs[3])) {
+          throw new Error(`Candidate count mismatch. Frontend: ${candidates.length}, Expected in proof: ${publicInputs[3]}`);
+        }
+        
+        // Check if nullifier has been used
+        const nullifierBytes = '0x' + publicInputs[2].toString(16).padStart(64, '0');
+        const nullifierUsed = await contract.usedNullifiers(proposalId, nullifierBytes);
+        console.log('  Nullifier used:', nullifierUsed);
+        if (nullifierUsed) {
+          throw new Error('This nullifier has already been used. You have already voted for this proposal.');
+        }
+        
+        console.log('  ✅ All contract state checks passed');
+      } catch (validationError: any) {
+        console.error('  ❌ Contract state validation failed');
+        console.error('  Error:', validationError);
+        throw validationError;
+      }
+      
+      // First, simulate the transaction to check for revert reasons
+      console.log('  🔍 Simulating transaction to check for errors...');
+      setStatus('Validating transaction...');
+      let simulationPassed = false;
+      try {
+        // Use staticCall if available (ethers v6), otherwise skip simulation
+        if (contract.voteWithZK && typeof contract.voteWithZK.staticCall === 'function') {
+          await contract.voteWithZK.staticCall(
+            proposalId,
+            proof,
+            publicInputs,
+            commitment
+          );
+          console.log('  ✅ Simulation passed - transaction should succeed');
+          simulationPassed = true;
+        } else {
+          console.log('  ⚠️ staticCall not available, skipping simulation');
+          simulationPassed = true; // Skip if not available
+        }
+      } catch (simError: any) {
+        // If we get "missing revert data", the node isn't returning the revert reason
+        // This is common with Hardhat/local networks. Since contract state is valid,
+        // we'll proceed with the transaction and let it fail with a better error.
+        if (simError?.code === 'CALL_EXCEPTION' && simError?.data === null) {
+          console.warn('  ⚠️ Simulation failed with missing revert data (common with local networks)');
+          console.warn('  ⚠️ Proceeding with transaction - contract state validation passed');
+          console.warn('  ⚠️ If transaction fails, it is likely due to invalid ZK proof');
+          // Don't throw - proceed with transaction
+        } else {
+          console.error('  ❌ Simulation failed - transaction will revert');
+          console.error('  Error:', simError);
+          
+          // Since we already validated contract state, this is likely a proof verification issue
+          let revertReason = 'Invalid ZK proof - the proof verification failed';
+          if (simError?.reason) {
+            revertReason = simError.reason;
+          } else if (simError?.message) {
+            revertReason = simError.message;
+            // Try to extract Solidity error message
+            const match = simError.message.match(/revert\s+(.+)/i) || 
+                         simError.message.match(/execution reverted:\s*(.+)/i) ||
+                         simError.message.match(/reason:\s*(.+)/i);
+            if (match) {
+              revertReason = match[1];
+            }
+          }
+          
+          throw new Error(`Transaction will revert: ${revertReason}. This usually means the ZK proof is invalid. Please regenerate the proof.`);
+        }
+      }
+      
+      // Estimate gas
+      console.log('  ⛽ Estimating gas...');
+      let gasEstimate;
+      try {
+        gasEstimate = await contract.voteWithZK.estimateGas(
+          proposalId,
+          proof,
+          publicInputs,
+          commitment
+        );
+        console.log('  Gas estimate:', gasEstimate.toString());
+      } catch (gasError: any) {
+        console.warn('  ⚠️ Gas estimation failed:', gasError?.message || gasError);
+        // Continue with manual gas limit
+      }
+      
+      console.log('  Gas limit:', gasEstimate ? (gasEstimate * BigInt(120) / BigInt(100)).toString() : '5000000 (manual)');
       setStatus('Submitting vote to blockchain...');
       
       console.log('  Calling contract.voteWithZK()...');
-      const tx = await contract.voteWithZK(
-        proposalId,
-        proofArray as any,
-        publicInputs as any,
-        commitment,
-        { gasLimit: 5000000 } // ZK verification requires more gas
-      );
+      console.log('  ⚠️ NOTE: If this fails, it is likely due to:');
+      console.log('     1. Invalid ZK proof (most common)');
+      console.log('     2. Proof values out of field range');
+      console.log('     3. Mismatch between circuit and verifier');
+      console.log('  💡 To see the actual error, check your Hardhat node logs');
+      console.log('     The transaction is reverting but the error message is not being returned');
+      console.log('');
+      
+      let tx;
+      try {
+        tx = await contract.voteWithZK(
+          proposalId,
+          proof,
+          publicInputs,
+          commitment,
+          { 
+            gasLimit: gasEstimate ? gasEstimate * BigInt(120) / BigInt(100) : 5000000 // Add 20% buffer if estimate available
+          }
+        );
+      } catch (txError: any) {
+        // If the error is about missing revert data, provide helpful guidance
+        if (txError?.code === 'CALL_EXCEPTION' && txError?.data === null) {
+          console.error('  ❌ Transaction failed with missing revert data');
+          console.error('  💡 This usually means:');
+          console.error('     1. The ZK proof verification failed (most likely)');
+          console.error('     2. Check your Hardhat node terminal for the actual revert reason');
+          console.error('     3. The verifier contract may not match the circuit');
+          console.error('     4. Try regenerating the circuit and verifier: npm run zk:setup');
+          throw new Error('Transaction failed: ZK proof verification likely failed. Check Hardhat node logs for details. The verifier contract may need to be regenerated to match the circuit.');
+        }
+        throw txError;
+      }
       console.log('  ✅ Transaction sent');
       console.log('  Transaction hash:', tx.hash);
       console.log('');
@@ -335,22 +537,66 @@ export function ZKVoting({ proposalId, candidates, merkleRoot, voterAddresses, v
       console.error('═══════════════════════════════════════════════════════════');
       console.error('Error type:', err instanceof Error ? err.constructor.name : typeof err);
       console.error('Error message:', err instanceof Error ? err.message : String(err));
+      
+      // Try to extract revert reason
+      let errorMessage = err.message || 'Failed to submit ZK vote';
+      let revertReason = '';
+      
+      if (err && typeof err === 'object') {
+        if ('reason' in err && err.reason) {
+          revertReason = err.reason;
+          console.error('Error reason:', revertReason);
+        }
+        if ('data' in err && err.data) {
+          console.error('Error data:', err.data);
+          // Try to decode error data if it's a revert
+          if (typeof err.data === 'string' && err.data.startsWith('0x')) {
+            // This might be encoded revert data
+            console.error('Encoded error data (hex):', err.data);
+          }
+        }
+        if ('code' in err) {
+          console.error('Error code:', err.code);
+        }
+        if ('transaction' in err) {
+          console.error('Failed transaction:', err.transaction);
+        }
+        if ('receipt' in err) {
+          console.error('Transaction receipt:', err.receipt);
+        }
+      }
+      
+      // Check for common revert reasons in the error message
+      const commonReasons = [
+        'Proposal ID mismatch',
+        'Merkle root mismatch',
+        'Candidate count mismatch',
+        'Nullifier already used',
+        'Invalid ZK proof',
+        'This proposal is not ZK voting',
+        'Voting for this proposal has ended',
+        'ZK verifier not set'
+      ];
+      
+      for (const reason of commonReasons) {
+        if (errorMessage.includes(reason) || revertReason.includes(reason)) {
+          errorMessage = reason;
+          break;
+        }
+      }
+      
+      // If we have a revert reason, use it
+      if (revertReason && !errorMessage.includes(revertReason)) {
+        errorMessage = revertReason;
+      }
+      
       if (err instanceof Error && err.stack) {
         console.error('Stack trace:');
         console.error(err.stack);
       }
-      if (err && typeof err === 'object' && 'data' in err) {
-        console.error('Error data:', err.data);
-      }
-      if (err && typeof err === 'object' && 'reason' in err) {
-        console.error('Error reason:', err.reason);
-      }
-      if (err && typeof err === 'object' && 'code' in err) {
-        console.error('Error code:', err.code);
-      }
       console.error('═══════════════════════════════════════════════════════════');
       
-      setError(err.message || 'Failed to submit ZK vote');
+      setError(errorMessage);
       setStatus('');
     } finally {
       setIsGeneratingProof(false);
