@@ -82,8 +82,8 @@ export function useVoting(provider: BrowserProvider | null, account: string | nu
                   const votingTypeNum = proposalData[2];
                   [id, description, , isFinished, createdAt, finishedAt] = proposalData;
                   votingType = Number(votingTypeNum) as 0 | 1;
-                  // Only CANDIDATE_BASED is supported now
-                  if (votingType !== VotingType.CANDIDATE_BASED) {
+                  // Support both CANDIDATE_BASED and ZK_CANDIDATE_BASED
+                  if (votingType !== VotingType.CANDIDATE_BASED && votingType !== VotingType.ZK_CANDIDATE_BASED) {
                     console.warn(`Proposal ${i} has unsupported voting type ${votingType}, treating as candidate-based`);
                     votingType = VotingType.CANDIDATE_BASED;
                   }
@@ -115,31 +115,45 @@ export function useVoting(provider: BrowserProvider | null, account: string | nu
                 proposal.eligibleVoters = eligibleVoters;
                 proposal.eligibleVoterCount = BigInt(eligibleVoters.length);
 
-                // Load data based on voting type (only candidate-based supported)
-                try {
-                  const candidates = await votingContract.getProposalCandidates(i);
-                  proposal.candidates = candidates;
-                  
-                  // Load vote counts for each candidate
-                  const candidateVotes: { [candidate: string]: bigint } = {};
-                  const votePromises = candidates.map(async (candidate: string) => {
-                    const votes = await votingContract.getCandidateVoteCount(i, candidate).catch(() => 0n);
-                    candidateVotes[candidate] = votes;
-                  });
-                  await Promise.all(votePromises);
-                  proposal.candidateVotes = candidateVotes;
-
-                  // Load winner if finished
-                  if (isFinished) {
-                    try {
-                      const winner = await votingContract.getWinnerCandidate(i);
-                      proposal.winner = winner;
-                    } catch (e) {
-                      console.error(`Error loading winner for proposal ${i}:`, e);
-                    }
+                // Load ZK-specific data for ZK proposals
+                if (Number(votingType) === VotingType.ZK_CANDIDATE_BASED) {
+                  try {
+                    const [merkleRoot, commitmentsCount] = await Promise.all([
+                      votingContract.getProposalMerkleRoot(i),
+                      votingContract.getZKVoteCommitmentsCount(i)
+                    ]);
+                    proposal.merkleRoot = merkleRoot;
+                    proposal.zkVoteCommitmentsCount = commitmentsCount;
+                  } catch (err) {
+                    console.warn('Failed to load ZK proposal data:', err);
                   }
-                } catch (e) {
-                  console.error(`Error loading candidates for proposal ${i}:`, e);
+                }
+
+                // Load data based on voting type (candidate-based and ZK)
+                  try {
+                    const candidates = await votingContract.getProposalCandidates(i);
+                    proposal.candidates = candidates;
+                    
+                    // Load vote counts for each candidate
+                    const candidateVotes: { [candidate: string]: bigint } = {};
+                    const votePromises = candidates.map(async (candidate: string) => {
+                      const votes = await votingContract.getCandidateVoteCount(i, candidate).catch(() => 0n);
+                      candidateVotes[candidate] = votes;
+                    });
+                    await Promise.all(votePromises);
+                    proposal.candidateVotes = candidateVotes;
+
+                    // Load winner if finished
+                    if (isFinished) {
+                      try {
+                        const winner = await votingContract.getWinnerCandidate(i);
+                        proposal.winner = winner;
+                      } catch (e) {
+                        console.error(`Error loading winner for proposal ${i}:`, e);
+                      }
+                    }
+                  } catch (e) {
+                    console.error(`Error loading candidates for proposal ${i}:`, e);
                 }
 
                 // Load voter's choice if they voted
@@ -213,11 +227,23 @@ export function useVoting(provider: BrowserProvider | null, account: string | nu
           });
           
           // Check network FIRST and try to switch automatically
-          const network = await provider.getNetwork();
+          let network;
+          try {
+            network = await provider.getNetwork();
           console.log('Network info:', {
             chainId: network.chainId.toString(),
             name: network.name,
           });
+          } catch (networkError: any) {
+            console.error('Error getting network:', networkError);
+            // If we can't get network, it might be a connection issue
+            if (networkError.code === 'UNKNOWN_ERROR' || networkError.message?.includes('RPC')) {
+              setError('Cannot connect to blockchain. Make sure Hardhat node is running on http://127.0.0.1:8545');
+              setLoading(false);
+              return;
+            }
+            throw networkError;
+          }
           
           // Check if current network is supported
           const networkCheck = await checkNetworkSupport(provider);
@@ -228,23 +254,23 @@ export function useVoting(provider: BrowserProvider | null, account: string | nu
             if (!networkCheck.supported || network.chainId !== BigInt(TARGET_NETWORK_CONFIG.chainId)) {
               const targetChainId = TARGET_NETWORK_CONFIG.chainId;
               console.log(`Wrong network detected. Attempting to switch to ${TARGET_NETWORK_CONFIG.name} network...`);
-              try {
+            try {
                 await ensureTargetNetwork(provider);
                 console.log(`✅ Successfully switched to ${TARGET_NETWORK_CONFIG.name} network`);
-                await new Promise(resolve => setTimeout(resolve, 500));
-                const newProvider = new BrowserProvider(window.ethereum!);
-                const newNetwork = await newProvider.getNetwork();
+              await new Promise(resolve => setTimeout(resolve, 500));
+              const newProvider = new BrowserProvider(window.ethereum!);
+              const newNetwork = await newProvider.getNetwork();
                 const expectedChainId = BigInt(TARGET_NETWORK_CONFIG.chainId);
                 if (newNetwork.chainId !== expectedChainId) {
-                  throw new Error('Still on wrong network after switch attempt');
-                }
-              } catch (switchError: any) {
-                const errorMsg = switchError.message || `Wrong network! Expected Chain ID ${targetChainId} (${TARGET_NETWORK_CONFIG.name}), but connected to Chain ID ${network.chainId.toString()}. Please switch MetaMask to the correct network manually.`;
-                console.error(errorMsg);
-                setError(errorMsg);
-                setLoading(false);
-                return;
+                throw new Error('Still on wrong network after switch attempt');
               }
+            } catch (switchError: any) {
+                const errorMsg = switchError.message || `Wrong network! Expected Chain ID ${targetChainId} (${TARGET_NETWORK_CONFIG.name}), but connected to Chain ID ${network.chainId.toString()}. Please switch MetaMask to the correct network manually.`;
+              console.error(errorMsg);
+              setError(errorMsg);
+              setLoading(false);
+              return;
+            }
             }
           } else if (!networkCheck.supported) {
             // No target network config, but current network is not supported
@@ -339,8 +365,46 @@ export function useVoting(provider: BrowserProvider | null, account: string | nu
   };
 
   // Legacy createProposal (deprecated - no longer supported)
-  const createProposal = async (description: string) => {
+  const createProposal = async (_description: string) => {
     throw new Error('createProposal is deprecated. Use createCandidateProposal with at least one candidate.');
+  };
+
+  // Create ZK proposal
+  const createZKProposal = async (description: string, candidates: string[], merkleRoot: string) => {
+    if (!contract) throw new Error('Contract not loaded');
+    if (!account) throw new Error('Please connect your wallet');
+    
+    try {
+      // Estimate gas first to catch function existence errors early
+      try {
+        await contract.createZKProposal.estimateGas(description, candidates, merkleRoot);
+      } catch (estimateError: any) {
+        const errorMsg = estimateError.message || String(estimateError);
+        if (errorMsg.includes('does not exist') || errorMsg.includes('missing function') || errorMsg.includes('execution reverted')) {
+          throw new Error('Contract does not have createZKProposal function. Please redeploy the contract with the new code.');
+        }
+      }
+      
+      const tx = await contract.createZKProposal(description, candidates, merkleRoot);
+      await tx.wait();
+      
+      // Get the new proposal ID (contract increments proposalCount before returning)
+      const newProposalCount = await contract.proposalCount();
+      await refresh();
+      
+      return newProposalCount; // Return the new proposal ID
+    } catch (err: any) {
+      console.error('Error creating ZK proposal:', err);
+      let message = err.message || String(err);
+      if (err.message && err.message.includes('does not have')) {
+        message = 'The contract does not have the createZKProposal function. Please redeploy the updated contract.';
+      } else if (err.message && err.message.includes('Internal JSON-RPC error')) {
+        message = 'Transaction failed. Possible reasons: 1) You are not the contract owner, 2) Contract needs to be redeployed with new code, 3) Invalid candidate data or merkle root. Check the console for details.';
+        } else if (err.reason) {
+          message = err.reason;
+        }
+      throw new Error(message);
+    }
   };
 
   // Add voter to specific proposal
@@ -400,7 +464,7 @@ export function useVoting(provider: BrowserProvider | null, account: string | nu
   };
 
   // Legacy vote function (deprecated - no longer supported)
-  const vote = async (proposalId: bigint) => {
+  const vote = async (_proposalId: bigint) => {
     throw new Error('vote is deprecated. Use voteForCandidate with a candidate name.');
   };
 
@@ -454,6 +518,7 @@ export function useVoting(provider: BrowserProvider | null, account: string | nu
     refresh,
     // New functions
     createCandidateProposal,
+    createZKProposal,
     addVoterToProposal,
     addVotersToProposal,
     voteForCandidate,

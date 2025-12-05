@@ -20,3 +20,5 @@
 /coverage
 
 /.env
+*.ptau
+circuits/build/*.ptau

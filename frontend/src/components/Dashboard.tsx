@@ -3,6 +3,7 @@ import { useWallet } from '../hooks/useWallet';
 import { useVoting } from '../hooks/useVoting';
 import { ProposalCard } from './ProposalCard';
 import { CreateCandidateProposal } from './CreateCandidateProposal';
+import { CreateZKProposal } from './CreateZKProposal';
 import { HardhatAccounts } from './HardhatAccounts';
 
 export function Dashboard() {
@@ -17,6 +18,7 @@ export function Dashboard() {
     error,
     refresh,
     createCandidateProposal,
+    createZKProposal,
     addVoterToProposal,
     addVotersToProposal,
     voteForCandidate,
@@ -120,10 +122,16 @@ export function Dashboard() {
       
       {/* Create Proposal Sections - Always visible to owners */}
       {isOwner && (
-        <CreateCandidateProposal
-          onCreateProposal={createCandidateProposal}
-          isOwner={isOwner}
-        />
+        <>
+          <CreateCandidateProposal
+            onCreateProposal={createCandidateProposal}
+            isOwner={isOwner}
+          />
+          <CreateZKProposal
+            onCreateZKProposal={createZKProposal}
+            isOwner={isOwner}
+          />
+        </>
       )}
 
       {/* Admin Panel for legacy voter registration - HIDDEN */}

@@ -1,6 +1,7 @@
 import type { Proposal } from '../types/proposal';
 import { VotingType } from '../config/contract';
 import { CandidateVoting } from './CandidateVoting';
+import { ZKVoting } from './ZKVoting';
 import { ResultsDisplay } from './ResultsDisplay';
 import { FinishVotingButton } from './FinishVotingButton';
 import { ProposalVoterManager } from './ProposalVoterManager';
@@ -24,7 +25,9 @@ export function ProposalCard({
   isOwner,
   isLoading = false,
 }: ProposalCardProps) {
-  const votingTypeLabel = 'Candidate-Based';
+  const votingTypeLabel = proposal.votingType === VotingType.ZK_CANDIDATE_BASED 
+    ? 'ZK Anonymous Voting' 
+    : 'Candidate-Based';
   const statusBadge = proposal.isFinished ? 'Finished' : 'Active';
 
   return (
@@ -138,8 +141,8 @@ export function ProposalCard({
         </div>
       )}
 
-      {/* Voter management for owners */}
-      {isOwner && !proposal.isFinished && (
+      {/* Voter management for owners (only for non-ZK proposals) */}
+      {isOwner && !proposal.isFinished && proposal.votingType !== VotingType.ZK_CANDIDATE_BASED && (
         <ProposalVoterManager
           proposalId={proposal.id}
           onAddVoter={(address) => onAddVoter(address)}
@@ -147,13 +150,64 @@ export function ProposalCard({
           isOwner={isOwner}
         />
       )}
+      
+      {/* Info for ZK proposals */}
+      {proposal.votingType === VotingType.ZK_CANDIDATE_BASED && (
+        <div style={{
+          padding: '12px',
+          backgroundColor: '#e3f2fd',
+          borderRadius: '8px',
+          marginBottom: '15px',
+          fontSize: '13px'
+        }}>
+          <strong>🔐 Anonymous Voting:</strong> Eligible voters were defined when this proposal was created via the Merkle tree. 
+          Only voters with valid secrets can cast anonymous votes. The voter list is private and not stored on-chain.
+        </div>
+      )}
 
       {/* Voting interface */}
-      <CandidateVoting
-        proposal={proposal}
-        onVote={onVoteForCandidate}
-        isLoading={isLoading}
-      />
+      {proposal.votingType === VotingType.ZK_CANDIDATE_BASED ? (
+        <ZKVoting
+          proposalId={Number(proposal.id)}
+          candidates={proposal.candidates || []}
+          merkleRoot={proposal.merkleRoot || '0x0'}
+          voterAddresses={(() => {
+            // Try to get addresses from multiple sources
+            try {
+              // First try global map (for immediate access after creation)
+              const win = window as any;
+              if (win.zkProposalAddresses) {
+                const globalAddrs = win.zkProposalAddresses[proposal.id.toString()];
+                if (globalAddrs && Array.isArray(globalAddrs) && globalAddrs.length > 0) {
+                  console.log(`✅ Loaded ${globalAddrs.length} addresses from global map for proposal ${proposal.id}`);
+                  return globalAddrs;
+                }
+              }
+              
+              // Then try localStorage
+              const storageKey = `zk_proposal_${proposal.id}_addresses`;
+              const stored = localStorage.getItem(storageKey);
+              if (stored) {
+                const parsed = JSON.parse(stored) as string[];
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                  console.log(`✅ Loaded ${parsed.length} addresses from localStorage for proposal ${proposal.id}`);
+                  return parsed;
+                }
+              }
+            } catch (e) {
+              console.warn('Failed to load voter addresses:', e);
+            }
+            console.warn(`⚠️ No voter addresses found for proposal ${proposal.id}`);
+            return undefined;
+          })()}
+        />
+      ) : (
+        <CandidateVoting
+          proposal={proposal}
+          onVote={onVoteForCandidate}
+          isLoading={isLoading}
+        />
+      )}
 
       {/* Finish voting button (owner only) */}
       {isOwner && (

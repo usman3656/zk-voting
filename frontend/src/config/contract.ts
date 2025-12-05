@@ -6,8 +6,10 @@ export const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || "";
 export const TARGET_NETWORK = import.meta.env.VITE_NETWORK || 'hardhat';
 
 // Voting type constants (matches contract enum)
+// In Solidity: enum VotingType { CANDIDATE_BASED = 0, ZK_CANDIDATE_BASED = 1 }
 export const VotingType = {
   CANDIDATE_BASED: 0,
+  ZK_CANDIDATE_BASED: 1, // Matches contract enum value
 } as const;
 
 // Import ABI from local JSON file

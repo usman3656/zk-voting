@@ -16,7 +16,19 @@
     "setup": "hardhat run scripts/setup-and-deploy.ts --network localhost",
     "setup:sepolia": "hardhat run scripts/setup-testnet.ts --network sepolia",
     "setup:goerli": "hardhat run scripts/setup-testnet.ts --network goerli",
-    "setup:holesky": "hardhat run scripts/setup-testnet.ts --network holesky"
+    "setup:holesky": "hardhat run scripts/setup-testnet.ts --network holesky",
+    "zk:compile": "tsx scripts/setup-zk-circuit.ts",
+    "zk:setup": "tsx scripts/zk-trusted-setup.ts",
+    "zk:generate-verifier": "tsx scripts/generate-verifier.ts",
+    "zk:merkle": "tsx scripts/generate-merkle-tree.ts",
+    "zk:copy-files": "tsx scripts/copy-circuit-files.ts",
+    "zk:deploy": "hardhat run scripts/deploy-zk-contracts.ts --network localhost",
+    "zk:test-merkle": "tsx scripts/test-merkle-tree.ts",
+    "zk:test-match": "tsx scripts/test-frontend-backend-match.ts",
+    "zk:verify-root": "tsx scripts/verify-proposal-root.ts",
+    "zk:deploy:sepolia": "hardhat run scripts/deploy-zk-contracts.ts --network sepolia",
+    "zk:deploy:goerli": "hardhat run scripts/deploy-zk-contracts.ts --network goerli",
+    "zk:deploy:holesky": "hardhat run scripts/deploy-zk-contracts.ts --network holesky"
   },
   "keywords": [],
   "author": "",
@@ -31,12 +43,15 @@
     "@types/mocha": "^10.0.10",
     "@types/node": "^22.19.1",
     "chai": "^5.3.3",
+    "circom": "^0.5.37",
     "eslint": "^9.39.1",
     "ethers": "^6.15.0",
     "forge-std": "github:foundry-rs/forge-std#v1.9.4",
     "hardhat": "^3.0.16",
     "mocha": "^11.7.5",
+    "snarkjs": "^0.7.5",
     "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
     "typescript": "~5.8.0"
   },
   "dependencies": {
@@ -45,7 +60,6 @@
     "circomlibjs": "^0.1.7",
     "dotenv": "^17.2.3",
     "keccak256": "^1.0.6",
-    "merkletreejs": "^0.6.0",
-    "snarkjs": "^0.7.5"
+    "merkletreejs": "^0.6.0"
   }
 }

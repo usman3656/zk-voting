@@ -1,6 +1,12 @@
 [
   {
-    "inputs": [],
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "_zkVerifier",
+        "type": "address"
+      }
+    ],
     "stateMutability": "nonpayable",
     "type": "constructor"
   },
@@ -90,6 +96,31 @@
       }
     ],
     "name": "VotingFinished",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "proposalId",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "bytes32",
+        "name": "nullifier",
+        "type": "bytes32"
+      },
+      {
+        "indexed": false,
+        "internalType": "bytes32",
+        "name": "commitment",
+        "type": "bytes32"
+      }
+    ],
+    "name": "ZKVoteCast",
     "type": "event"
   },
   {
@@ -273,9 +304,19 @@
         "internalType": "string",
         "name": "_description",
         "type": "string"
+      },
+      {
+        "internalType": "string[]",
+        "name": "_candidates",
+        "type": "string[]"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "_merkleRoot",
+        "type": "bytes32"
       }
     ],
-    "name": "createYesNoProposal",
+    "name": "createZKProposal",
     "outputs": [
       {
         "internalType": "uint256",
@@ -381,6 +422,25 @@
         "internalType": "string[]",
         "name": "",
         "type": "string[]"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "_proposalId",
+        "type": "uint256"
+      }
+    ],
+    "name": "getProposalMerkleRoot",
+    "outputs": [
+      {
+        "internalType": "bytes32",
+        "name": "",
+        "type": "bytes32"
       }
     ],
     "stateMutability": "view",
@@ -507,16 +567,11 @@
         "type": "uint256"
       }
     ],
-    "name": "getYesNoResults",
+    "name": "getZKVoteCommitmentsCount",
     "outputs": [
       {
         "internalType": "uint256",
-        "name": "yesCount",
-        "type": "uint256"
-      },
-      {
-        "internalType": "uint256",
-        "name": "noCount",
+        "name": "",
         "type": "uint256"
       }
     ],
@@ -537,6 +592,30 @@
       }
     ],
     "name": "hasVoted",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "_proposalId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "_nullifier",
+        "type": "bytes32"
+      }
+    ],
+    "name": "isNullifierUsed",
     "outputs": [
       {
         "internalType": "bool",
@@ -611,6 +690,25 @@
         "internalType": "uint256",
         "name": "",
         "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "name": "proposalMerkleRoots",
+    "outputs": [
+      {
+        "internalType": "bytes32",
+        "name": "",
+        "type": "bytes32"
       }
     ],
     "stateMutability": "view",
@@ -740,6 +838,66 @@
         "internalType": "uint256",
         "name": "_proposalId",
         "type": "uint256"
+      },
+      {
+        "internalType": "uint256[]",
+        "name": "_candidateIndices",
+        "type": "uint256[]"
+      },
+      {
+        "internalType": "bytes32[]",
+        "name": "_secrets",
+        "type": "bytes32[]"
+      }
+    ],
+    "name": "revealZKVotes",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "_zkVerifier",
+        "type": "address"
+      }
+    ],
+    "name": "setZKVerifier",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "",
+        "type": "bytes32"
+      }
+    ],
+    "name": "usedNullifiers",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "_proposalId",
+        "type": "uint256"
       }
     ],
     "name": "vote",
@@ -773,12 +931,22 @@
         "type": "uint256"
       },
       {
-        "internalType": "bool",
-        "name": "_isYes",
-        "type": "bool"
+        "internalType": "uint256[8]",
+        "name": "_proof",
+        "type": "uint256[8]"
+      },
+      {
+        "internalType": "uint256[4]",
+        "name": "_publicInputs",
+        "type": "uint256[4]"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "_commitment",
+        "type": "bytes32"
       }
     ],
-    "name": "voteYesNo",
+    "name": "voteWithZK",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -808,24 +976,13 @@
     "type": "function"
   },
   {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      },
-      {
-        "internalType": "address",
-        "name": "",
-        "type": "address"
-      }
-    ],
-    "name": "voterYesNoChoice",
+    "inputs": [],
+    "name": "zkVerifier",
     "outputs": [
       {
-        "internalType": "bool",
+        "internalType": "contract Groth16Verifier",
         "name": "",
-        "type": "bool"
+        "type": "address"
       }
     ],
     "stateMutability": "view",
@@ -837,18 +994,23 @@
         "internalType": "uint256",
         "name": "",
         "type": "uint256"
-      }
-    ],
-    "name": "yesNoResults",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "yesCount",
-        "type": "uint256"
       },
       {
         "internalType": "uint256",
-        "name": "noCount",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "name": "zkVoteCommitments",
+    "outputs": [
+      {
+        "internalType": "bytes32",
+        "name": "commitment",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "uint256",
+        "name": "timestamp",
         "type": "uint256"
       }
     ],

@@ -65,8 +65,12 @@ async function deployContract(): Promise<string> {
   
   console.log(`Deploying with account: ${deployer.address}`);
   
+  // Deploy without ZK verifier for backward compatibility
+  // For ZK support, use: npm run zk:deploy
+  // Deploy without ZK verifier for backward compatibility
+  // For ZK support, use: npm run zk:deploy
   const VotingFactory = await ethers.getContractFactory('SimpleVoting');
-  const voting = await VotingFactory.deploy();
+  const voting = await VotingFactory.deploy('0x0000000000000000000000000000000000000000');
   await voting.waitForDeployment();
   
   const address = await voting.getAddress();

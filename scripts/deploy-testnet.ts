@@ -28,9 +28,11 @@ async function deployContract(networkName: string): Promise<string> {
     throw new Error('Deployer account has no balance. Please fund the account with testnet ETH.');
   }
   
+  // Deploy without ZK verifier for backward compatibility
+  // For ZK support, use: npm run zk:deploy:sepolia (or goerli/holesky)
   const VotingFactory = await ethers.getContractFactory('SimpleVoting');
   console.log('Deploying contract...');
-  const voting = await VotingFactory.deploy();
+  const voting = await VotingFactory.deploy('0x0000000000000000000000000000000000000000');
   await voting.waitForDeployment();
   
   const address = await voting.getAddress();

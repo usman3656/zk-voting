@@ -1,7 +1,7 @@
 export interface Proposal {
   id: bigint;
   description: string;
-  votingType: 0; // 0 = CANDIDATE_BASED (only candidate-based voting is supported)
+  votingType: 0 | 1; // 0 = CANDIDATE_BASED, 1 = ZK_CANDIDATE_BASED
   isFinished: boolean;
   createdAt: bigint;
   finishedAt: bigint;
@@ -17,5 +17,8 @@ export interface Proposal {
   // Proposal-specific voters
   eligibleVoters?: string[]; // Addresses of voters eligible for this specific proposal
   eligibleVoterCount?: bigint; // Number of eligible voters
+  // ZK-specific
+  merkleRoot?: string; // Merkle root for ZK proposals
+  zkVoteCommitmentsCount?: bigint; // Number of ZK vote commitments
 }
 
